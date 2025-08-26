@@ -130,39 +130,48 @@ export default function Dashboard() {
     user: "",
   })
 
-  // Mock API base URL - replace with your actual API endpoint
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
-  const USE_MOCK_DATA = true // Always use mock data for demo purposes
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://form-nutri-backend.onrender.com"
+  const USE_MOCK_DATA = false // Try API first, fallback to mock if needed
 
   const fetchData = async (endpoint: string, setter: Function, loadingKey: string) => {
     try {
       setLoading((prev) => ({ ...prev, [loadingKey]: true }))
       setErrors((prev) => ({ ...prev, [loadingKey]: "" }))
 
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      console.log(`[v0] Attempting to fetch: ${API_BASE}${endpoint}`)
+      const response = await fetch(`${API_BASE}${endpoint}`)
 
-      // Use mock data based on endpoint
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log(`[v0] Successfully fetched ${endpoint}:`, data)
+      setter(data)
+    } catch (error) {
+      console.error(`[v0] Error fetching ${endpoint}:`, error)
+
       let mockData
-      switch (endpoint) {
-        case "/stats/top-foods":
+      switch (loadingKey) {
+        case "topFoods":
           mockData = MOCK_DATA.topFoods
           break
-        case "/stats/frequency-by-food":
+        case "frequency":
           mockData = MOCK_DATA.frequencyByFood
           break
-        case "/stats/by-category":
+        case "category":
           mockData = MOCK_DATA.consumptionByCategory
           break
         default:
           mockData = []
       }
+
+      console.log(`[v0] Using mock data for ${endpoint}:`, mockData)
       setter(mockData)
-    } catch (error) {
-      console.error(`Error fetching ${endpoint}:`, error)
+
       setErrors((prev) => ({
         ...prev,
-        [loadingKey]: `Failed to load data. Please check your connection and try again.`,
+        [loadingKey]: `API unavailable - showing demo data. Backend error: ${error.message}`,
       }))
     } finally {
       setLoading((prev) => ({ ...prev, [loadingKey]: false }))
@@ -176,26 +185,53 @@ export default function Dashboard() {
       setLoading((prev) => ({ ...prev, user: true }))
       setErrors((prev) => ({ ...prev, user: "" }))
 
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 800))
+      console.log(`[v0] Attempting to fetch user data: ${API_BASE}/stats/user/${dni}`)
+      const response = await fetch(`${API_BASE}/stats/user/${dni}`)
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          const mockUserData = MOCK_DATA.userResponses[dni as keyof typeof MOCK_DATA.userResponses]
+          if (mockUserData) {
+            console.log(`[v0] Using mock data for user ${dni}:`, mockUserData)
+            setUserResponses(mockUserData)
+            setErrors((prev) => ({
+              ...prev,
+              user: `API unavailable - showing demo data for DNI: ${dni}`,
+            }))
+            return
+          }
+
+          setErrors((prev) => ({
+            ...prev,
+            user: `No data found for DNI: ${dni}. Try demo DNIs: 12345678 or 87654321`,
+          }))
+          setUserResponses([])
+          return
+        }
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log(`[v0] Successfully fetched user data:`, data)
+      setUserResponses(data.respuestas || [])
+    } catch (error) {
+      console.error(`[v0] Error fetching user data:`, error)
 
       const mockUserData = MOCK_DATA.userResponses[dni as keyof typeof MOCK_DATA.userResponses]
       if (mockUserData) {
+        console.log(`[v0] Using mock data for user ${dni}:`, mockUserData)
         setUserResponses(mockUserData)
+        setErrors((prev) => ({
+          ...prev,
+          user: `API unavailable - showing demo data for DNI: ${dni}`,
+        }))
       } else {
         setErrors((prev) => ({
           ...prev,
-          user: `No data found for DNI: ${dni}. Try "12345678" or "87654321" for demo data.`,
+          user: `Backend unavailable. Try demo DNIs: 12345678 or 87654321`,
         }))
         setUserResponses([])
       }
-    } catch (error) {
-      console.error(`Error fetching user data:`, error)
-      setErrors((prev) => ({
-        ...prev,
-        user: `Failed to load user data for DNI: ${dni}. Please verify the DNI and try again.`,
-      }))
-      setUserResponses([])
     } finally {
       setLoading((prev) => ({ ...prev, user: false }))
     }
@@ -230,19 +266,18 @@ export default function Dashboard() {
             <div className="flex items-center gap-4">
               <Badge variant="secondary" className="px-3 py-1">
                 <TrendingUp className="w-4 h-4 mr-1" />
-                {USE_MOCK_DATA ? "Demo Data" : "Live Data"}
+                {errors.topFoods || errors.frequency || errors.category ? "Demo Data (API Fallback)" : "Live Data"}
               </Badge>
             </div>
           </div>
-          {USE_MOCK_DATA && (
-            <div className="mt-4 p-3 bg-primary/10 border border-primary/20 rounded-md">
-              <p className="text-sm text-primary">
-                <strong>Demo Mode:</strong> Using mock data for demonstration. This dashboard shows realistic food
-                consumption analytics with interactive charts and user search functionality. Try searching for DNI
-                "12345678" or "87654321" in the User Analysis section.
-              </p>
-            </div>
-          )}
+          <div className="mt-4 p-3 bg-primary/10 border border-primary/20 rounded-md">
+            <p className="text-sm text-primary">
+              <strong>Status:</strong>{" "}
+              {errors.topFoods || errors.frequency || errors.category
+                ? "Backend API unavailable - showing demo data with full functionality. Charts and user search work with sample data."
+                : "Connected to live backend API. All data is real-time from your database."}
+            </p>
+          </div>
         </div>
       </header>
 
@@ -310,10 +345,15 @@ export default function Dashboard() {
                 <div className="flex items-center justify-center h-64">
                   <Loader2 className="w-8 h-8 animate-spin text-primary" />
                 </div>
-              ) : errors.topFoods ? (
-                <div className="flex items-center justify-center h-64 text-destructive">{errors.topFoods}</div>
               ) : (
-                <TopFoodsChart data={topFoods} />
+                <>
+                  {errors.topFoods && (
+                    <div className="mb-4 p-2 bg-amber-50 border border-amber-200 rounded text-sm text-amber-800">
+                      {errors.topFoods}
+                    </div>
+                  )}
+                  <TopFoodsChart data={topFoods} />
+                </>
               )}
             </CardContent>
           </Card>
@@ -332,10 +372,15 @@ export default function Dashboard() {
                 <div className="flex items-center justify-center h-64">
                   <Loader2 className="w-8 h-8 animate-spin text-primary" />
                 </div>
-              ) : errors.frequency ? (
-                <div className="flex items-center justify-center h-64 text-destructive">{errors.frequency}</div>
               ) : (
-                <FrequencyByFoodChart data={frequencyByFood} />
+                <>
+                  {errors.frequency && (
+                    <div className="mb-4 p-2 bg-amber-50 border border-amber-200 rounded text-sm text-amber-800">
+                      {errors.frequency}
+                    </div>
+                  )}
+                  <FrequencyByFoodChart data={frequencyByFood} />
+                </>
               )}
             </CardContent>
           </Card>
@@ -355,10 +400,15 @@ export default function Dashboard() {
               <div className="flex items-center justify-center h-64">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
               </div>
-            ) : errors.category ? (
-              <div className="flex items-center justify-center h-64 text-destructive">{errors.category}</div>
             ) : (
-              <ConsumptionByCategoryChart data={consumptionByCategory} />
+              <>
+                {errors.category && (
+                  <div className="mb-4 p-2 bg-amber-50 border border-amber-200 rounded text-sm text-amber-800">
+                    {errors.category}
+                  </div>
+                )}
+                <ConsumptionByCategoryChart data={consumptionByCategory} />
+              </>
             )}
           </CardContent>
         </Card>
@@ -372,7 +422,9 @@ export default function Dashboard() {
             </CardTitle>
             <CardDescription>
               Search for specific user responses by DNI
-              {USE_MOCK_DATA && " (Try: 12345678 or 87654321)"}
+              {errors.topFoods || errors.frequency || errors.category
+                ? " (Demo mode - try DNIs: 12345678 or 87654321)"
+                : " (Enter a valid DNI from your database)"}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -380,7 +432,9 @@ export default function Dashboard() {
               <div className="flex-1">
                 <Input
                   placeholder={
-                    USE_MOCK_DATA ? "Enter DNI (try: 12345678 or 87654321)" : "Enter DNI to search user responses..."
+                    errors.topFoods || errors.frequency || errors.category
+                      ? "Enter DNI (try: 12345678 or 87654321)"
+                      : "Enter DNI to search user responses..."
                   }
                   value={searchDni}
                   onChange={(e) => setSearchDni(e.target.value)}
@@ -398,7 +452,17 @@ export default function Dashboard() {
               </Button>
             </div>
 
-            {errors.user && <div className="text-destructive mb-4 p-3 bg-destructive/10 rounded-md">{errors.user}</div>}
+            {errors.user && (
+              <div
+                className={`mb-4 p-3 rounded-md ${
+                  errors.user.includes("demo data") || errors.user.includes("Demo DNIs")
+                    ? "bg-amber-50 border border-amber-200 text-amber-800"
+                    : "bg-destructive/10 text-destructive"
+                }`}
+              >
+                {errors.user}
+              </div>
+            )}
 
             {userResponses.length > 0 && <UserAnalysisTable data={userResponses} dni={searchDni} />}
           </CardContent>
