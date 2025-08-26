@@ -130,7 +130,7 @@ export default function Dashboard() {
     user: "",
   })
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://form-nutri-backend.onrender.com/api"
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://form-nutri-backend.onrender.com/api/form"
   const USE_MOCK_DATA = false // Try API first, fallback to mock if needed
 
   const fetchData = async (endpoint: string, setter: Function, loadingKey: string) => {
